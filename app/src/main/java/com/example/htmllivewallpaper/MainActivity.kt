@@ -4,9 +4,7 @@ import android.app.Activity
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -30,16 +28,22 @@ class MainActivity : Activity() {
     private fun buildUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 32, 28, 24)
+            setPadding(24, 24, 24, 20)
         }
+
         root.addView(TextView(this).apply {
-            text = "HTML Live Wallpaper"
-            textSize = 24f
+            text = "HTML Live Wallpaper V2"
+            textSize = 23f
         })
         root.addView(TextView(this).apply {
-            text = "Direct website URL या ZIP में HTML/CSS/JS प्रोजेक्ट चुनें। ZIP में मुख्य फाइल index.html होनी चाहिए।"
-            textSize = 15f
-            setPadding(0, 14, 0, 18)
+            text = "दो Rendering Modes: HTML Website/ZIP और Native Matrix Animation"
+            textSize = 14f
+            setPadding(0, 10, 0, 16)
+        })
+
+        root.addView(TextView(this).apply {
+            text = "1. HTML Renderer"
+            textSize = 18f
         })
         urlInput = EditText(this).apply {
             hint = "https://example.com/wallpaper/"
@@ -47,16 +51,42 @@ class MainActivity : Activity() {
             setText(prefs.getString("source_url", ""))
         }
         root.addView(urlInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        root.addView(makeButton("URL सेव करें", ::saveUrl))
-        root.addView(makeButton("HTML प्रोजेक्ट ZIP चुनें", ::chooseZip))
-        root.addView(makeButton("Live Wallpaper सेट करें", ::openWallpaperPicker))
-        root.addView(makeButton("लोकल Wallpaper हटाएँ", ::clearLocal))
-        status = TextView(this).apply {
+        root.addView(makeButton("URL सेव करें और HTML Mode चुनें") { saveUrlAndSelectHtml() })
+        root.addView(makeButton("HTML / CSS / JS ZIP Import करें") { chooseZip() })
+
+        root.addView(TextView(this).apply {
+            text = "2. Native Renderer"
+            textSize = 18f
+            setPadding(0, 18, 0, 4)
+        })
+        root.addView(makeButton("Native Matrix Mode चुनें") { selectMode("native") })
+        root.addView(makeButton("HTML WebView Mode चुनें") { selectMode("html") })
+
+        root.addView(TextView(this).apply {
+            text = "Native Animation FPS"
             textSize = 14f
-            setPadding(0, 18, 0, 0)
-            text = currentStatus()
+            setPadding(0, 12, 0, 2)
+        })
+        root.addView(makeButton("30 FPS (कम बैटरी/हीट)") {
+            prefs.edit().putInt("native_fps", 30).apply()
+            refreshStatus()
+            toast("Native FPS 30 पर सेट")
+        })
+        root.addView(makeButton("60 FPS (ज्यादा स्मूद, ज्यादा लोड)") {
+            prefs.edit().putInt("native_fps", 60).apply()
+            refreshStatus()
+            toast("Native FPS 60 पर सेट")
+        })
+
+        root.addView(makeButton("Live Wallpaper Preview / Set करें") { openWallpaperPicker() })
+        root.addView(makeButton("Offline ZIP Project हटाएँ") { clearLocal() })
+
+        status = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, 16, 0, 0)
         }
         root.addView(status)
+        refreshStatus()
         setContentView(root)
     }
 
@@ -65,16 +95,26 @@ class MainActivity : Activity() {
         setOnClickListener { action() }
     }
 
-    private fun saveUrl() {
+    private fun saveUrlAndSelectHtml() {
         val value = urlInput.text.toString().trim()
         if (!(value.startsWith("https://") || value.startsWith("http://"))) {
             toast("कृपया http:// या https:// वाला URL डालें")
             return
         }
-        prefs.edit().putString("source_url", value).putString("source_type", "url")
-            .remove("local_path").apply()
-        status.text = "URL सेव हो गया। अब Live Wallpaper सेट करें।"
-        toast("URL सेव हो गया")
+        prefs.edit()
+            .putString("source_url", value)
+            .putString("source_type", "url")
+            .putString("renderer_mode", "html")
+            .remove("local_path")
+            .apply()
+        refreshStatus()
+        toast("URL सेव हुआ और HTML Mode चुना गया")
+    }
+
+    private fun selectMode(mode: String) {
+        prefs.edit().putString("renderer_mode", mode).apply()
+        refreshStatus()
+        toast(if (mode == "native") "Native Matrix Mode चुना गया" else "HTML WebView Mode चुना गया")
     }
 
     private fun chooseZip() {
@@ -85,7 +125,7 @@ class MainActivity : Activity() {
         startActivityForResult(intent, pickZip)
     }
 
-    @Deprecated("Deprecated by platform; kept for broad Android compatibility")
+    @Deprecated("Deprecated by platform; retained for broad Android compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != pickZip || resultCode != RESULT_OK) return
@@ -104,7 +144,9 @@ class MainActivity : Activity() {
                         require(out.path.startsWith(target.canonicalPath + File.separator) || out == target) {
                             "ZIP में असुरक्षित file path मिला"
                         }
-                        if (entry.isDirectory) out.mkdirs() else {
+                        if (entry.isDirectory) {
+                            out.mkdirs()
+                        } else {
                             out.parentFile?.mkdirs()
                             out.outputStream().use { output ->
                                 val buffer = ByteArray(8192)
@@ -124,10 +166,13 @@ class MainActivity : Activity() {
             }
             val index = findIndexHtml(target)
             require(index != null) { "ZIP के अंदर index.html नहीं मिली" }
-            prefs.edit().putString("source_type", "local")
-                .putString("local_path", index.absolutePath).apply()
-            status.text = "ZIP import हो गई: ${index.relativeTo(target).path}"
-            toast("Wallpaper प्रोजेक्ट import हो गया")
+            prefs.edit()
+                .putString("source_type", "local")
+                .putString("local_path", index.absolutePath)
+                .putString("renderer_mode", "html")
+                .apply()
+            refreshStatus()
+            toast("ZIP import हुई और HTML Mode चुना गया")
         } catch (e: Exception) {
             toast("Import असफल: ${e.message}")
         }
@@ -150,17 +195,22 @@ class MainActivity : Activity() {
     private fun clearLocal() {
         File(filesDir, "wallpaper_project").deleteRecursively()
         prefs.edit().remove("local_path").putString("source_type", "url").apply()
-        status.text = currentStatus()
+        refreshStatus()
         toast("लोकल ZIP प्रोजेक्ट हटाया गया")
     }
 
-    private fun currentStatus(): String {
-        return if (prefs.getString("source_type", "url") == "local") {
-            "Mode: Offline ZIP\n${prefs.getString("local_path", "") ?: ""}"
+    private fun refreshStatus() {
+        if (!::status.isInitialized) return
+        val mode = prefs.getString("renderer_mode", "html")
+        val source = prefs.getString("source_type", "url")
+        val location = if (source == "local") {
+            "ZIP: ${prefs.getString("local_path", "unknown")}"
         } else {
-            "Mode: Website URL\n${prefs.getString("source_url", "अभी URL सेट नहीं है")}"
+            "URL: ${prefs.getString("source_url", "अभी URL सेट नहीं है")}"
         }
+        status.text = "Current Mode: ${if (mode == "native") "Native Matrix" else "HTML WebView"}\n$location\nNative FPS: ${prefs.getInt("native_fps", 30)}"
     }
 
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun toast(message: String) =
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 }

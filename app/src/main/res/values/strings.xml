@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">HTML Live Wallpaper</string>
-    <string name="wallpaper_description">Display a website or imported HTML project as a live wallpaper.</string>
+    <string name="app_name">HTML Live Wallpaper V2</string>
+    <string name="wallpaper_description">HTML websites, offline ZIP projects and native Matrix animation.</string>
 </resources>
