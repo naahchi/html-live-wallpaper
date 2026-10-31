@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">HTML Live Wallpaper</string>
+    <string name="wallpaper_description">Display a website or imported HTML project as a live wallpaper.</string>
+</resources>
